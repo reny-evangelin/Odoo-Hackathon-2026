@@ -11,12 +11,14 @@ from models import (
     SalaryInfoCreate, PayrollRunCreate
 )
 from database import HRMSDatabase
+from routes.auth import router as auth_router
 
 app = FastAPI(
     title="HRMS Backend API",
     description="Backend API Service for Human Resource Management System connected to Supabase",
     version="1.0.0"
 )
+app.include_router(auth_router)
 
 # Enable CORS for cross-origin requests
 app.add_middleware(

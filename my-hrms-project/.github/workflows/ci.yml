@@ -1,0 +1,83 @@
+name: HRMS Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, dev ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-test:
+    name: Backend Pytest Security & Integration Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r my-hrms-project/backend/requirements.txt
+
+      - name: Run Pytest Security Tests
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://wtjqcxojeswnkgjqwkol.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'sb_publishable_NtAoSoQy1c-Vu7BDeojC0Q_UbUOdrTG' }}
+        run: |
+          cd my-hrms-project
+          python -m pytest backend/tests/test_security.py -v
+
+  frontend-build:
+    name: Frontend Build & Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'my-hrms-project/frontend/package-lock.json'
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd my-hrms-project/frontend
+          npm ci
+
+      - name: Build React Production Bundle
+        run: |
+          cd my-hrms-project/frontend
+          npm run build
+
+  docker-build-matrix:
+    name: Build Docker Containers
+    needs: [backend-test, frontend-build]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [backend, frontend]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Container (${{ matrix.service }})
+        uses: docker/build-push-action@v5
+        with:
+          context: ./my-hrms-project/${{ matrix.service }}
+          file: ./my-hrms-project/${{ matrix.service }}/Dockerfile
+          push: false
+          tags: hrms-${{ matrix.service }}:latest

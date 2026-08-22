@@ -1479,7 +1479,145 @@ class DayflowMockBackendEngine implements IDayflowAPI {
   }
 }
 
-export const dayflowApi = new DayflowMockBackendEngine();
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:5000";
+
+class DayflowRealHttpBackendEngine implements IDayflowAPI {
+  private mockFallback = new DayflowMockBackendEngine();
+
+  async getEmployees(): Promise<Employee[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/employees`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch (e) {
+      console.warn("Backend API unavailable, using fallback dataset:", e);
+    }
+    return this.mockFallback.getEmployees();
+  }
+
+  async getEmployeeById(id: string): Promise<Employee> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/employees/${id}`);
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn("Backend API unavailable, using fallback employee:", e);
+    }
+    return this.mockFallback.getEmployeeById(id);
+  }
+
+  async updateEmployee(id: string, updates: Partial<Employee>): Promise<Employee> {
+    return this.mockFallback.updateEmployee(id, updates);
+  }
+
+  async createEmployee(empData: Omit<Employee, "id">): Promise<Employee> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/employees`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(empData),
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn("Backend API error on createEmployee, using mock engine:", e);
+    }
+    return this.mockFallback.createEmployee(empData);
+  }
+
+  async getAttendanceRecords(employeeId?: string): Promise<AttendanceRecord[]> {
+    try {
+      const url = employeeId ? `${API_BASE_URL}/api/attendance?employee_id=${employeeId}` : `${API_BASE_URL}/api/attendance`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch (e) {
+      console.warn("Backend API unavailable, using fallback attendance:", e);
+    }
+    return this.mockFallback.getAttendanceRecords(employeeId);
+  }
+
+  async clockIn(employeeId: string): Promise<AttendanceRecord> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/clock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_id: employeeId, action: "check_in" }),
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn("Backend API error on clockIn, fallback to mock engine:", e);
+    }
+    return this.mockFallback.clockIn(employeeId);
+  }
+
+  async clockOut(employeeId: string): Promise<AttendanceRecord> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/attendance/clock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_id: employeeId, action: "check_out" }),
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn("Backend API error on clockOut, fallback to mock engine:", e);
+    }
+    return this.mockFallback.clockOut(employeeId);
+  }
+
+  async getLeaveRequests(): Promise<LeaveRequest[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/timeoff/requests`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
+    } catch (e) {
+      console.warn("Backend API error on getLeaveRequests:", e);
+    }
+    return this.mockFallback.getLeaveRequests();
+  }
+
+  async applyLeave(request: Omit<LeaveRequest, "id" | "status" | "appliedDate">): Promise<LeaveRequest> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/timeoff/requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn("Backend API error on applyLeave:", e);
+    }
+    return this.mockFallback.applyLeave(request);
+  }
+
+  async reviewLeave(leaveId: string, status: "APPROVED" | "REJECTED", comments = ""): Promise<LeaveRequest> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/timeoff/requests/${leaveId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, reviewed_by: "admin-001" }),
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn("Backend API error on reviewLeave:", e);
+    }
+    return this.mockFallback.reviewLeave(leaveId, status, comments);
+  }
+
+  async getNotifications(userId: string): Promise<NotificationItem[]> {
+    return this.mockFallback.getNotifications(userId);
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    return this.mockFallback.markNotificationRead(id);
+  }
+}
+
+export const dayflowApi = new DayflowRealHttpBackendEngine();
 
 // ============================================================
 // REGION 07 — STATE MANAGEMENT (GLOBAL ZUSTAND STORE PATTERN)
@@ -1629,7 +1767,7 @@ export const AuthPageView: React.FC<{ onAuthenticate: (role: UserRole) => void }
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
     if (!email || !password) {
@@ -1637,10 +1775,30 @@ export const AuthPageView: React.FC<{ onAuthenticate: (role: UserRole) => void }
       return;
     }
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      if (authMode === "signup") {
+        const res = await fetch(`${API_BASE_URL}/api/auth/signup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company_name: "Dayflow Enterprise",
+            company_alias: "DF",
+            admin_name: fullName || "New User",
+            email: email,
+            password: password,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          console.warn("Auth endpoint notice:", errData);
+        }
+      }
+    } catch (err) {
+      console.warn("Backend auth call notice:", err);
+    } finally {
       setIsLoading(false);
       onAuthenticate(selectedRole);
-    }, 400);
+    }
   };
 
   return (

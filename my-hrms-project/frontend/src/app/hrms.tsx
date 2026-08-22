@@ -2629,16 +2629,17 @@ export const AttendanceView: React.FC = () => {
             variant="outline"
             size="sm"
             leftIcon={<Download className="w-3.5 h-3.5" />}
-            onClick={() =>
+            onClick={() => {
+              exportAttendanceCSV(attendance);
               dispatch({
                 type: "ADD_TOAST",
                 payload: {
-                  type: "info",
-                  title: "Export Initiated",
-                  message: "Downloading timesheet CSV...",
+                  type: "success",
+                  title: "CSV Exported",
+                  message: "Downloaded dayflow_attendance_logs_august_2026.csv",
                 },
-              })
-            }
+              });
+            }}
           >
             Export Logs
           </Button>
@@ -3442,9 +3443,42 @@ export const HRMSApplication: React.FC = () => {
       });
       return;
     }
+
+    if (new Date(endDate) < new Date(startDate)) {
+      dispatch({
+        type: "ADD_TOAST",
+        payload: { type: "error", title: "Invalid Date Range", message: "End date cannot be prior to start date." },
+      });
+      return;
+    }
+
+    const calculatedDays = getLeaveDaysCount(startDate, endDate);
+    if (calculatedDays <= 0) {
+      dispatch({
+        type: "ADD_TOAST",
+        payload: { type: "error", title: "Invalid Duration", message: "Leave duration must be at least 1 day." },
+      });
+      return;
+    }
+
+    const curEmp = employees.find((e) => e.id === state.currentUserId) || employees[0];
+    const leaveKey = leaveType.toLowerCase() as keyof typeof curEmp.leaveBalances;
+    const availableBalance = curEmp.leaveBalances[leaveKey] || 0;
+
+    if (calculatedDays > availableBalance) {
+      dispatch({
+        type: "ADD_TOAST",
+        payload: {
+          type: "error",
+          title: "Insufficient Balance",
+          message: `Requested ${calculatedDays} day(s), but only ${availableBalance} day(s) available in ${leaveType} leave balance.`,
+        },
+      });
+      return;
+    }
+
     setIsSubmittingLeave(true);
     try {
-      const curEmp = employees.find((e) => e.id === state.currentUserId) || employees[0];
       await dayflowApi.applyLeave({
         employeeId: curEmp.id,
         employeeName: `${curEmp.firstName} ${curEmp.lastName}`,
@@ -3453,7 +3487,7 @@ export const HRMSApplication: React.FC = () => {
         leaveType,
         startDate,
         endDate,
-        totalDays: 2,
+        totalDays: calculatedDays,
         isHalfDay: false,
         reason: leaveReason,
       });
@@ -3462,8 +3496,8 @@ export const HRMSApplication: React.FC = () => {
         type: "ADD_TOAST",
         payload: {
           type: "success",
-          title: "Leave Applied",
-          message: "Request submitted for HR approval.",
+          title: "Leave Application Submitted",
+          message: `Your ${calculatedDays}-day leave request is pending HR approval.`,
         },
       });
       dispatch({ type: "OPEN_APPLY_LEAVE_MODAL", payload: false });
@@ -3480,15 +3514,22 @@ export const HRMSApplication: React.FC = () => {
 
   const handleRejectConfirm = async () => {
     if (!state.rejectModalTarget) return;
+    if (!rejectReason.trim()) {
+      dispatch({
+        type: "ADD_TOAST",
+        payload: { type: "error", title: "Validation Error", message: "Please provide a reason for declining this request." },
+      });
+      return;
+    }
     try {
       await dayflowApi.reviewLeave(
         state.rejectModalTarget.referenceId,
         "REJECTED",
-        rejectReason || "Request declined by HR Officer."
+        rejectReason.trim()
       );
       dispatch({
         type: "ADD_TOAST",
-        payload: { type: "info", title: "Request Rejected", message: "Employee notified with remarks." },
+        payload: { type: "info", title: "Request Declined", message: "Employee notified with manager remarks." },
       });
       dispatch({ type: "SET_REJECT_TARGET", payload: null });
       setRejectReason("");
@@ -3836,6 +3877,7 @@ export function getLeaveDaysCount(startDate: string, endDate: string, isHalfDay 
   if (isHalfDay) return 0.5;
   const start = new Date(startDate);
   const end = new Date(endDate);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
   const diffTime = Math.abs(end.getTime() - start.getTime());
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   return Math.max(1, diffDays);
@@ -3862,6 +3904,36 @@ export function filterEmployees(
     return matchQuery && matchDept && matchStatus;
   });
 }
+
+/**
+ * Phase 12 Requirement: Browser CSV Export Utility
+ * Generates and triggers browser download of attendance logs.
+ */
+export function exportAttendanceCSV(records: AttendanceRecord[], filename = "dayflow_attendance_logs_august_2026.csv"): void {
+  const headers = ["Record ID", "Employee ID", "Date", "Clock In", "Clock Out", "Break (Mins)", "Total Hours", "Status", "Location / Remarks"];
+  const rows = records.map((r) => [
+    r.id,
+    r.employeeId,
+    r.date,
+    r.clockInTime || "--:--",
+    r.clockOutTime || "Active Shift",
+    r.breakDurationMinutes,
+    r.totalWorkHours,
+    r.status,
+    `"${(r.remarks || r.location || "Office HQ").replace(/"/g, '""')}"`,
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 
 // ============================================================
 // REGION 12 — DEVELOPMENT NOTES / HANDOFF

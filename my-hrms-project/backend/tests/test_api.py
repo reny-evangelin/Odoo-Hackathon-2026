@@ -14,16 +14,16 @@ client = TestClient(app)
 def auth_token():
     """Create a test user and obtain an auth token (if applicable)."""
     # Assuming a registration endpoint exists at /api/auth/register
-    reg_resp = client.post("/api/auth/register", json={
+    reg_resp = client.post("/api/auth/signup", json={
         "email": "testuser@example.com",
         "password": "StrongPass123!",
         "full_name": "Test User"
     })
     assert reg_resp.status_code in [200, 201]
     login_resp = client.post("/api/auth/login", json={
-        "email": "testuser@example.com",
-        "password": "StrongPass123!"
-    })
+    "identifier": "testuser@example.com",
+    "password": "StrongPass123!"
+})
     assert login_resp.status_code == 200
     return login_resp.json().get("access_token")
 

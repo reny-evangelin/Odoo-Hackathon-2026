@@ -49,6 +49,43 @@ class PayrollStatus(str, Enum):
 
 # --- Request / Response Models ---
 
+class LoginRequest(BaseModel):
+    identifier: str # Email or Login ID
+    password: str
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: dict
+    must_reset_password: bool
+    message: Optional[str] = None
+
+class UserSessionResponse(BaseModel):
+    id: str
+    login_id: Optional[str] = None
+    full_name: str
+    email: str
+    role: EmployeeRole
+    company_id: str
+    company_name: Optional[str] = None
+    company_logo_url: Optional[str] = None
+    must_reset_password: bool
+
+class PasswordResetRequest(BaseModel):
+    new_password: str
+    confirm_password: Optional[str] = None
+
+
+class AddEmployeeInput(BaseModel):
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
+    full_name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    role: EmployeeRole = EmployeeRole.EMPLOYEE
+    department: Optional[str] = None
+    designation: Optional[str] = None
+
 class CompanyBase(BaseModel):
     name: str
     company_code: str

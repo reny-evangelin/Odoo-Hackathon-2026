@@ -7,6 +7,40 @@ router = APIRouter(prefix="/api/employees", tags=["Employees"])
 
 # Helper to verify token and extract employee context & role
 def get_current_user_context(authorization: Optional[str] = Header(None)):
+    """
+    Standard route guard: verifies token, resolves employee profile,
+    and blocks users who must reset their temporary password with 403.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Bearer token")
+    
+    token = authorization.split(" ")[1]
+    try:
+        user_res = supabase.auth.get_user(token)
+        if not user_res or not user_res.user:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        auth_id = user_res.user.id
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    emp_res = supabase_admin.table("employees").select("*").eq("auth_id", auth_id).execute()
+    if not emp_res.data:
+        raise HTTPException(status_code=404, detail="Employee record not found for user")
+
+    employee = emp_res.data[0]
+    if employee.get("must_reset_password"):
+        raise HTTPException(
+            status_code=403,
+            detail="Password reset required: Please change your temporary password before accessing application features."
+        )
+
+    return employee
+
+def get_auth_session_context(authorization: Optional[str] = Header(None)):
+    """
+    Session guard for auth endpoints (like /api/auth/me):
+    Resolves employee profile even if must_reset_password is True.
+    """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Bearer token")
     
@@ -24,6 +58,7 @@ def get_current_user_context(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=404, detail="Employee record not found for user")
 
     return emp_res.data[0]
+
 
 # Request models
 class PrivateInfoRequest(BaseModel):

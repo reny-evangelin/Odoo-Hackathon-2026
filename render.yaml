@@ -9,7 +9,8 @@ services:
       - key: PORT
         value: "5000"
       - key: SUPABASE_URL
-        fromSecret: SUPABASE_URL
+        sync: false
       - key: SUPABASE_ANON_KEY
-        fromSecret: SUPABASE_ANON_KEY
+        sync: false
+
 

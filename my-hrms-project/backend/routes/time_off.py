@@ -32,8 +32,7 @@ def get_allocations(employee_id: Optional[str] = None, user: dict = Depends(get_
     target_emp_id = employee_id if (role in ["admin", "hr"] and employee_id) else user["id"]
 
     res = supabase_admin.table("time_off_allocations") \
-        .select("*, time_off_types(name, requires_attachment, max_days_per_year)") \
-        .eq("company_id", company_id) \
+        .select("*, time_off_types(name, requires_attachment, is_paid)") \
         .eq("employee_id", target_emp_id) \
         .execute()
 
@@ -103,7 +102,7 @@ async def create_time_off_request(
 
         if alloc_res.data:
             alloc = alloc_res.data[0]
-            remaining = alloc["total_days"] - alloc["used_days"]
+            remaining = alloc["allocated_days"] - alloc["used_days"]
             if req_days > remaining:
                 raise HTTPException(status_code=400, detail=f"Insufficient leave balance. Remaining: {remaining} days, Requested: {req_days} days.")
 
@@ -138,7 +137,7 @@ def list_time_off_requests(employee_id: Optional[str] = None, user: dict = Depen
         target_emp_id = user["id"]
 
     query = supabase_admin.table("time_off_requests") \
-        .select("*, employees(full_name, login_id), time_off_types(name)") \
+        .select("*, employees!time_off_requests_employee_id_fkey(first_name, last_name, login_id), time_off_types(name)") \
         .eq("company_id", company_id)
 
     if target_emp_id:

@@ -1,11 +1,10 @@
 services:
   - type: web
-    name: hrms-backend
+    name: dayflow-hrms
     env: docker
-    dockerfilePath: ./my-hrms-project/backend/Dockerfile
+    dockerfilePath: Dockerfile
     healthCheckPath: /health
     branch: main
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PORT
         value: "5000"
@@ -13,12 +12,4 @@ services:
         fromSecret: SUPABASE_URL
       - key: SUPABASE_ANON_KEY
         fromSecret: SUPABASE_ANON_KEY
-  - type: web
-    name: hrms-frontend
-    env: docker
-    dockerfilePath: ./my-hrms-project/frontend/Dockerfile
-    staticPublishPath: /usr/share/nginx/html
-    branch: main
-    envVars:
-      - key: VITE_API_URL
-        value: "https://hrms-backend.onrender.com"
+

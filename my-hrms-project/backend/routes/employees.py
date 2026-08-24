@@ -19,7 +19,7 @@ def get_current_user_context(authorization: Optional[str] = Header(None)):
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    emp_res = supabase_admin.table("employees").select("*").eq("auth_id", auth_id).execute()
+    emp_res = supabase_admin.table("employees").select("*").eq("user_id", auth_id).execute()
     if not emp_res.data:
         raise HTTPException(status_code=404, detail="Employee record not found for user")
 
